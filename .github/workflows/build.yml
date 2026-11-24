@@ -1,0 +1,38 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Распаковать zip (если есть) или взять файлы из корня
+        run: |
+          mkdir -p game
+          if ls *.zip >/dev/null 2>&1; then unzip -q -o "$(ls -t *.zip | head -1)" -d game; else cp index.html game.js game/; fi
+          IDX=$(find game -name index.html | head -1)
+          echo "SRC=$(dirname "$IDX")" >> $GITHUB_ENV
+      - name: Собрать APK
+        run: |
+          mkdir -p app/www && cd app
+          cp -r ../$SRC/* www/
+          npm init -y >/dev/null
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 three@0.160.0
+          cp node_modules/three/build/three.module.js www/three.module.js
+          npx cap init "FPS" com.mygame.fps --web-dir www
+          npx cap add android
+          sed -i 's/<activity/<activity android:screenOrientation="sensorLandscape"/' android/app/src/main/AndroidManifest.xml
+          npx cap sync android
+          cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-apk
+          path: app/android/app/build/outputs/apk/debug/app-debug.apk
